@@ -1,0 +1,125 @@
+// Prisma Schema for 온음 공간 예약 시스템
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 공간 (놀터/방음실)
+model Space {
+  id        String    @id @default(cuid())
+  name      String    @unique // "놀터" or "방음실"
+  hourlyRate Int      @default(14000) // 시간당 요금
+  password  String?   // 비밀번호 (#5204)
+  
+  bookings  Booking[]
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+// 사용자
+model User {
+  id       String  @id @default(cuid())
+  name     String
+  phone    String  @unique
+  unit     String? // 세대 (201, 301, 302, 401, 402, 501)
+  isMember Boolean @default(false) // 회원 여부
+  
+  bookings Booking[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 예약 상태
+enum BookingStatus {
+  PENDING          // 입금 대기
+  PAYMENT_PENDING  // 24시간 전 입금 확인 요청됨
+  CONFIRMED        // 확정
+  CANCELLED        // 취소
+  COMPLETED        // 완료
+}
+
+// 예약
+model Booking {
+  id          String        @id @default(cuid())
+  
+  // 관계
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  spaceId     String
+  space       Space         @relation(fields: [spaceId], references: [id])
+  
+  // 예약 정보
+  date        DateTime      // 예약 날짜
+  startTime   String        // 시작 시간 (HH:mm)
+  endTime     String        // 종료 시간 (HH:mm)
+  hours       Int           // 예약 시간 (단위: 시간)
+  
+  // 비용
+  amount      Int           // 총 금액
+  isFree      Boolean       @default(false) // 회원 무료 사용 여부
+  
+  // 상태
+  status      BookingStatus @default(PENDING)
+  
+  // 입금 정보
+  paymentDeadline DateTime?  // 입금 기한
+  paidAt      DateTime?     // 입금 확인 시간
+  
+  // 메모
+  notes       String?       // 관리자 메모
+  
+  // 알림
+  notifications Notification[]
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  @@index([date, spaceId]) // 날짜+공간 검색 최적화
+}
+
+// 알림 타입
+enum NotificationType {
+  BOOKING_CONFIRMED        // 예약 확인 (신청자)
+  PAYMENT_CONFIRMED        // 입금 확인 (신청자)
+  USAGE_REMINDER          // 이용 안내 (30분 전)
+  CLEANUP_REMINDER        // 정리 안내 (종료 30분 전)
+  BOOKING_CANCELLED       // 예약 취소
+  PAYMENT_CHECK_FIRST     // 입금 확인 요청 (1차, 재무담당자)
+  PAYMENT_CHECK_FINAL     // 입금 확인 요청 (최종, 재무담당자)
+}
+
+// 알림 로그
+model Notification {
+  id         String           @id @default(cuid())
+  
+  bookingId  String
+  booking    Booking          @relation(fields: [bookingId], references: [id])
+  
+  type       NotificationType
+  recipient  String           // 수신자 전화번호
+  message    String           @db.Text // 발송 내용
+  
+  sentAt     DateTime?        // 발송 시간
+  success    Boolean          @default(false) // 발송 성공 여부
+  error      String?          // 에러 메시지
+  
+  createdAt  DateTime         @default(now())
+  
+  @@index([bookingId])
+}
+
+// 관리자 설정
+model Settings {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
